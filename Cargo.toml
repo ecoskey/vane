@@ -4,11 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+atomicow = "1.1.0"
 bevy_app = { git = "https://github.com/bevyengine/bevy.git" }
 bevy_asset = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_camera = { git = "https://github.com/bevyengine/bevy.git" }
 bevy_ecs = { git = "https://github.com/bevyengine/bevy.git" }
 bevy_math = { git = "https://github.com/bevyengine/bevy.git" }
 bevy_reflect = { git = "https://github.com/bevyengine/bevy.git" }
 bevy_render = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_transform = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_derive = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_time = { git = "https://github.com/bevyengine/bevy.git" }
+bitflags = "2.9.1"
+bytemuck = "1.23.2"
+half = { version = "2.6.0", default-features = false, features = ["bytemuck"] }
+smallvec = "1.15.1"
+thiserror = "2.0.14"
 tracing = "0.1.41"
-bevy_vector_field = { path = "../bevy_vector_field" }
+variadics_please = "1.1.0"
