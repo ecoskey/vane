@@ -4,10 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy_app = "0.16.1"
-bevy_asset = "0.16.1"
-bevy_ecs = "0.16.1"
-bevy_math = "0.16.1"
-bevy_reflect = "0.16.1"
-bevy_render = "0.16.1"
+bevy_app = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_asset = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_ecs = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_math = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_reflect = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_render = { git = "https://github.com/bevyengine/bevy.git" }
 tracing = "0.1.41"
+bevy_vector_field = { path = "../bevy_vector_field" }
