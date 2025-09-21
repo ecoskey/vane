@@ -11,7 +11,7 @@ use bevy_ecs::{
     resource::Resource,
     system::{Commands, Res, SystemParamItem},
 };
-use bevy_math::{Mat4, UVec3, Vec3, Vec4, VectorSpace};
+use bevy_math::{Affine3A, Mat4, UVec3, Vec3, Vec4, VectorSpace};
 use bevy_reflect::TypePath;
 use bevy_render::{
     RenderApp, RenderStartup,
@@ -63,7 +63,7 @@ impl FlowField {
     }
 
     #[inline]
-    pub fn from_gen(size: UVec3, generator: impl FlowFieldGen) -> Self {
+    pub fn from_gen(size: UVec3, generator: impl FlowFieldGenerator) -> Self {
         let mut field = Self::zeroed(size);
         field.modify().fill_from_gen(generator);
         field
@@ -134,7 +134,7 @@ impl<'a> FlowFieldGuard<'a> {
         self.scratch[index as usize] = flow_vector;
     }
 
-    pub fn fill_from_gen(&mut self, mut generator: impl FlowFieldGen) {
+    pub fn fill_from_gen(&mut self, mut generator: impl FlowFieldGenerator) {
         for x in 0..self.size.x {
             for y in 0..self.size.y {
                 for z in 0..self.size.z {
@@ -301,6 +301,14 @@ impl FlowVector {
         Self(momentum_density.extend(density))
     }
 
+    /// Creates a [`FlowVector`] given the fluid's velocity and density.
+    ///
+    /// [`FlowVector::new`] should be preferred in most cases since it
+    /// better represents how the fluid will interact with objects.
+    pub fn from_velocity(velocity: Vec3, density: f32) -> Self {
+        Self::new(velocity * density, density)
+    }
+
     /// Returns the momentum density of the fluid flow
     ///
     /// units: kg m/s m^-3
@@ -434,19 +442,19 @@ impl VectorSpace for FlowVector {
 
 // FIELD GENERATORS ------------------------------------------------------------
 
-pub trait FlowFieldGen: Sized {
+pub trait FlowFieldGenerator: Sized {
     fn generate(&mut self, position: Vec3) -> FlowVector;
 
     #[inline]
-    fn transformed(self, transform: Transform) -> impl FlowFieldGen {
+    fn transformed(self, transform: Transform) -> impl FlowFieldGenerator {
         Transformed {
             inner: self,
-            world_to_local: transform.to_matrix().inverse(),
+            world_to_local: transform.compute_affine().inverse(),
         }
     }
 
     #[inline]
-    fn amplified(self, multiplier: f32) -> impl FlowFieldGen {
+    fn amplified(self, multiplier: f32) -> impl FlowFieldGenerator {
         Amplified {
             inner: self,
             multiplier,
@@ -454,7 +462,7 @@ pub trait FlowFieldGen: Sized {
     }
 }
 
-macro_rules! impl_generate_flow_field {
+macro_rules! impl_flow_field_generator {
     ($(($T:ident, $t:ident)),*) => {
         #[expect(
             clippy::allow_attributes,
@@ -472,46 +480,46 @@ macro_rules! impl_generate_flow_field {
             clippy::unused_unit,
             reason = "Zero-length tuples won't have anything to wrap."
         )]
-        impl <$($T: FlowFieldGen),*> FlowFieldGen for ($($T,)*) {
+        impl <$($T: FlowFieldGenerator),*> FlowFieldGenerator for ($($T,)*) {
             #[inline]
             fn generate(&mut self, position: Vec3) -> FlowVector {
                 let ($($t,)*) = self;
                 let mut vector = FlowVector::ZERO;
-                $(vector += <$T as FlowFieldGen>::generate($t, position);)*
+                $(vector += <$T as FlowFieldGenerator>::generate($t, position);)*
                 vector
             }
         }
     };
 }
 
-all_tuples!(impl_generate_flow_field, 0, 16, T, t);
+all_tuples!(impl_flow_field_generator, 0, 16, T, t);
 
-impl<F: FnMut(Vec3) -> FlowVector> FlowFieldGen for F {
+impl<F: FnMut(Vec3) -> FlowVector> FlowFieldGenerator for F {
     #[inline]
     fn generate(&mut self, position: Vec3) -> FlowVector {
         self(position)
     }
 }
 
-struct Transformed<T: FlowFieldGen> {
+struct Transformed<T: FlowFieldGenerator> {
     inner: T,
-    world_to_local: Mat4,
+    world_to_local: Affine3A,
 }
 
-impl<T: FlowFieldGen> FlowFieldGen for Transformed<T> {
+impl<T: FlowFieldGenerator> FlowFieldGenerator for Transformed<T> {
     #[inline]
     fn generate(&mut self, position: Vec3) -> FlowVector {
         self.inner
-            .generate((self.world_to_local * position.extend(1.0)).truncate())
+            .generate(self.world_to_local.transform_point3(position))
     }
 }
 
-struct Amplified<T: FlowFieldGen> {
+struct Amplified<T: FlowFieldGenerator> {
     inner: T,
     multiplier: f32,
 }
 
-impl<T: FlowFieldGen> FlowFieldGen for Amplified<T> {
+impl<T: FlowFieldGenerator> FlowFieldGenerator for Amplified<T> {
     #[inline]
     fn generate(&mut self, position: Vec3) -> FlowVector {
         self.inner.generate(position) * self.multiplier
@@ -520,7 +528,7 @@ impl<T: FlowFieldGen> FlowFieldGen for Amplified<T> {
 
 struct Uniform(FlowVector);
 
-impl FlowFieldGen for Uniform {
+impl FlowFieldGenerator for Uniform {
     #[inline]
     fn generate(&mut self, _position: Vec3) -> FlowVector {
         self.0
@@ -528,6 +536,6 @@ impl FlowFieldGen for Uniform {
 }
 
 #[inline]
-pub fn uniform(value: FlowVector) -> impl FlowFieldGen {
+pub fn uniform_flow_field(value: FlowVector) -> impl FlowFieldGenerator {
     Uniform(value)
 }
