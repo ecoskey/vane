@@ -3,15 +3,18 @@ use bevy_camera::primitives::Aabb;
 use bevy_ecs::{
     component::Component,
     entity::Entity,
-    query::With,
+    error::BevyError,
+    event::EntityEvent,
+    query::{Has, With},
     schedule::{IntoScheduleConfigs, SystemSet},
-    system::{Commands, Query},
-    world::Ref,
+    system::{Command, Local, Query, SystemParam, SystemState},
+    world::{Ref, World},
 };
-use bevy_math::{UVec3, Vec3, Vec3A};
+use bevy_math::Vec3A;
 use bevy_reflect::Reflect;
 use bevy_render::sync_world::SyncToRenderWorld;
 use bevy_transform::components::{GlobalTransform, Transform};
+use bevy_utils::Parallel;
 use core::ops::{Mul, Sub};
 
 pub struct ActivityPlugin;
@@ -19,7 +22,11 @@ pub struct ActivityPlugin;
 impl Plugin for ActivityPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<ActiveRegion>()
-            .register_type::<Activity>()
+            .register_type::<TrackActivity>()
+            .register_type::<Active>()
+            .register_type::<Activate>()
+            .register_type::<Deactivate>()
+            .register_type::<SetActive>()
             .add_systems(
                 PostUpdate,
                 (update_active_region_aabbs, update_activities).chain(),
@@ -37,14 +44,13 @@ struct ActiveEntities(Vec<Entity>);
 
 #[derive(Component, Default, Reflect)]
 #[require(Aabb)]
-pub enum Activity {
-    Awake,
-    #[default]
-    Asleep,
-}
+pub struct TrackActivity;
+
+#[derive(Component, Default, Reflect)]
+pub struct Active;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash, SystemSet)]
-struct ActivityUpdateSystems;
+pub struct ActivitySystems;
 
 fn update_active_region_aabbs(
     mut active_regions: Query<(Ref<GlobalTransform>, &mut Aabb), With<ActiveRegion>>,
@@ -72,9 +78,126 @@ fn update_active_region_aabbs(
     }
 }
 
+#[derive(EntityEvent, Reflect)]
+pub struct Activate {
+    pub entity: Entity,
+}
+
+#[derive(EntityEvent, Reflect)]
+pub struct Deactivate {
+    pub entity: Entity,
+}
+
+#[derive(EntityEvent, Reflect)]
+pub struct SetActive {
+    pub entity: Entity,
+    pub active: bool,
+}
+
+struct SetActiveMany {
+    entities: Vec<Entity>,
+    active: bool,
+}
+
+impl Command for SetActiveMany {
+    fn apply(self, world: &mut World) -> () {
+        for entity in self.entities.iter().copied() {
+            let Ok(mut entity_mut) = world.get_entity_mut(entity) else {
+                continue;
+            };
+
+            let is_active = entity_mut.contains::<Active>();
+            if is_active == self.active {
+                continue;
+            }
+            if self.active {
+                entity_mut.insert(Active);
+            } else {
+                entity_mut.remove::<Active>();
+            }
+
+            world.trigger(SetActive {
+                entity,
+                active: self.active,
+            });
+
+            if self.active {
+                world.trigger(Activate { entity });
+            } else {
+                world.trigger(Deactivate { entity });
+            }
+        }
+    }
+}
+
+#[derive(SystemParam)]
+struct UpdateActivitiesParams<'w, 's> {
+    active_regions: Query<'w, 's, (&'static Aabb, &'static mut ActiveEntities), With<ActiveRegion>>,
+    tracked_entities: Query<'w, 's, (Entity, &'static Aabb, Has<Active>), With<TrackActivity>>,
+}
+
 fn update_activities(
-    mut commands: Commands,
-    mut active_regions: Query<(&Aabb, &mut ActiveEntities), With<ActiveRegion>>,
-    tracked_entities: Query<&Aabb, With<Activity>>,
-) {
+    world: &mut World,
+    params: &mut SystemState<UpdateActivitiesParams>,
+    mut activated: Local<Parallel<Vec<Entity>>>,
+    mut insert_active_batch: Local<Vec<(Entity, Active)>>,
+    mut deactivated: Local<Parallel<Vec<Entity>>>,
+) -> Result<(), BevyError> {
+    let mut params = params.get_mut(world);
+
+    params
+        .active_regions
+        .iter_mut()
+        .for_each(|(_, mut active_entities)| active_entities.0.clear());
+
+    fn aabbs_intersect(a: Aabb, b: Aabb) -> bool {
+        (a.min().cmplt(b.max())).all() || (b.min().cmplt(a.max())).all()
+    }
+
+    //TODO: par_iter
+    params
+        .tracked_entities
+        .iter_mut()
+        .for_each(|(entity, entity_aabb, was_active)| {
+            let mut is_active = false;
+            for (region_aabb, mut active_entities) in params.active_regions.iter_mut() {
+                let intersects_region = aabbs_intersect(*entity_aabb, *region_aabb);
+                is_active |= intersects_region;
+
+                if is_active {
+                    active_entities.0.push(entity);
+                }
+
+                if is_active != was_active {
+                    if is_active {
+                        activated.scope(|entities| entities.push(entity));
+                    } else {
+                        deactivated.scope(|entities| entities.push(entity));
+                    }
+                }
+            }
+        });
+
+    activated.drain().for_each(|entity| {
+        world.trigger(Activate { entity });
+        world.trigger(SetActive {
+            entity,
+            active: true,
+        });
+        insert_active_batch.push((entity, Active));
+    });
+    world.try_insert_batch_if_new(insert_active_batch.drain(..))?;
+
+    deactivated.drain().for_each(|entity| {
+        world.trigger(Deactivate { entity });
+        world.trigger(SetActive {
+            entity,
+            active: false,
+        });
+        if let Ok(mut entity_mut) = world.get_entity_mut(entity) {
+            entity_mut.remove::<Active>();
+        }
+    });
+
+    Ok(())
 }
