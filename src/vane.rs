@@ -1,5 +1,3 @@
-pub mod measure;
-
 use std::time::Duration;
 
 use bevy_app::{App, Plugin};
@@ -8,7 +6,7 @@ use bevy_math::Vec3;
 use bevy_transform::components::Transform;
 use smallvec::SmallVec;
 
-use crate::flow::{FlowLayers, FlowVector};
+use crate::{activity::Activity, field::FlowVector, flow::FlowLayers};
 
 pub struct VanePlugin;
 
@@ -20,7 +18,7 @@ impl Plugin for VanePlugin {
 
 #[derive(Component, Default, Debug)]
 #[component(immutable)]
-#[require(FlowLayers::all(), Transform, VaneData)]
+#[require(FlowLayers::all(), Transform, VaneData, Activity)]
 #[non_exhaustive]
 pub enum Vane {
     #[default]

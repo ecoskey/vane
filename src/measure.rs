@@ -5,10 +5,9 @@ use bevy_ecs::{
 };
 use bevy_math::{Vec3, VectorSpace};
 
-use crate::{
-    flow::FlowVector,
-    vane::{Vane, VaneSample, VaneUpdate},
-};
+use crate::vane::{Vane, VaneSample, VaneUpdate};
+
+pub struct MeasurePlugin {}
 
 pub trait Measure: 'static {
     type Value: VectorSpace<Scalar: Send + Sync> + Send + Sync;
@@ -59,8 +58,6 @@ impl<M: Measure> Measured<M> {
     }
 }
 
-fn update_measure<M: Measure>(ev: On<VaneUpdate>) {}
-
 #[derive(Component)]
 #[component(immutable)]
 #[require(TriggerData<M>)]
@@ -105,59 +102,69 @@ impl<M: Measure> Default for TriggerData<M> {
     }
 }
 
-// Measure impls
+/// Implementations of the [`Measure`] trait
+pub mod measures {
+    use bevy_math::Vec3;
 
-impl Measure for FlowVector {
-    type Value = Self;
+    use crate::{
+        measure::Measure,
+        vane::{Vane, VaneSample},
+    };
 
-    #[inline]
-    fn measure<'a>(
-        _vane: &'a Vane,
-        samples: impl ExactSizeIterator<Item = &'a VaneSample>,
-    ) -> Self::Value {
-        let n_samples = samples.len() as f32;
-        samples.map(|sample| sample.flow).sum::<FlowVector>() / n_samples
+    pub use crate::field::FlowVector;
+
+    impl Measure for FlowVector {
+        type Value = Self;
+
+        #[inline]
+        fn measure<'a>(
+            _vane: &'a Vane,
+            samples: impl ExactSizeIterator<Item = &'a VaneSample>,
+        ) -> Self::Value {
+            let n_samples = samples.len() as f32;
+            samples.map(|sample| sample.flow).sum::<FlowVector>() / n_samples
+        }
     }
-}
 
-pub struct MomentumDensity;
+    pub struct MomentumDensity;
 
-impl Measure for MomentumDensity {
-    type Value = Vec3;
+    impl Measure for MomentumDensity {
+        type Value = Vec3;
 
-    #[inline]
-    fn measure<'a>(
-        vane: &'a Vane,
-        samples: impl ExactSizeIterator<Item = &'a VaneSample>,
-    ) -> Self::Value {
-        FlowVector::measure(vane, samples).momentum_density()
+        #[inline]
+        fn measure<'a>(
+            vane: &'a Vane,
+            samples: impl ExactSizeIterator<Item = &'a VaneSample>,
+        ) -> Self::Value {
+            FlowVector::measure(vane, samples).momentum_density()
+        }
     }
-}
 
-pub struct Density;
+    pub struct Density;
 
-impl Measure for Density {
-    type Value = f32;
+    impl Measure for Density {
+        type Value = f32;
 
-    #[inline]
-    fn measure<'a>(
-        vane: &'a Vane,
-        samples: impl ExactSizeIterator<Item = &'a VaneSample>,
-    ) -> Self::Value {
-        FlowVector::measure(vane, samples).density()
+        #[inline]
+        fn measure<'a>(
+            vane: &'a Vane,
+            samples: impl ExactSizeIterator<Item = &'a VaneSample>,
+        ) -> Self::Value {
+            FlowVector::measure(vane, samples).density()
+        }
     }
-}
 
-pub struct Velocity;
+    pub struct Velocity;
 
-impl Measure for Velocity {
-    type Value = Vec3;
+    impl Measure for Velocity {
+        type Value = Vec3;
 
-    #[inline]
-    fn measure<'a>(
-        vane: &'a Vane,
-        samples: impl ExactSizeIterator<Item = &'a VaneSample>,
-    ) -> Self::Value {
-        FlowVector::measure(vane, samples).velocity()
+        #[inline]
+        fn measure<'a>(
+            vane: &'a Vane,
+            samples: impl ExactSizeIterator<Item = &'a VaneSample>,
+        ) -> Self::Value {
+            FlowVector::measure(vane, samples).velocity()
+        }
     }
 }
