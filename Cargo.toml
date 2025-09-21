@@ -15,6 +15,7 @@ bevy_render = { git = "https://github.com/bevyengine/bevy.git" }
 bevy_transform = { git = "https://github.com/bevyengine/bevy.git" }
 bevy_derive = { git = "https://github.com/bevyengine/bevy.git" }
 bevy_time = { git = "https://github.com/bevyengine/bevy.git" }
+bevy_utils = { git = "https://github.com/bevyengine/bevy.git" }
 bitflags = "2.9.1"
 bytemuck = "1.23.2"
 half = { version = "2.6.0", default-features = false, features = ["bytemuck"] }
