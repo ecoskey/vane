@@ -2,6 +2,11 @@
 
 GPU force, velocity, and displacement fields for the [Bevy Game Engine](https://github.com/bevyengine/bevy)
 
+## NOTE:
+
+Vane is currently experimental, so very little of the code is on the stable `main` branch.
+The `feat/mvp` branch will be kept up to date as new code is added.
+
 ## License
 
 The code in this repository is dual-licensed under either of the MIT or
