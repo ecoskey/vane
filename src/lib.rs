@@ -4,7 +4,7 @@ use bevy_app::{PluginGroup, PluginGroupBuilder};
 
 use crate::{
     activity::ActivityPlugin, culling::CullingPlugin, field::FlowFieldPlugin, flow::FlowPlugin,
-    vane::VanePlugin,
+    measure::MeasurePlugin, vane::VanePlugin,
 };
 
 pub mod activity;
@@ -32,7 +32,7 @@ impl PluginGroup for VanePlugins {
 
 pub mod prelude {
     pub use crate::{
-        activity::{ActiveRegion, Activity},
+        activity::{Activate, Active, ActiveRegion, Deactivate, SetActive},
         field::{FlowField, FlowFieldGenerator as _, uniform_flow_field},
         flow::{Flow, FlowInfluence, FlowLayers, InheritAngularVelocity, InheritLinearVelocity},
         measure::{Measure, Measured, Trigger, measures},

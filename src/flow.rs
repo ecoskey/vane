@@ -1,37 +1,45 @@
-use bevy_app::{App, Plugin};
-use bevy_asset::{AsAssetId, AssetId, Handle};
+use bevy_app::{App, Plugin, Update};
+use bevy_asset::{AsAssetId, AssetApp, AssetId, Handle};
 use bevy_camera::primitives::Aabb;
+use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::{
     component::Component,
     entity::Entity,
     error::BevyError,
     query::{Changed, Has, With},
+    schedule::{IntoScheduleConfigs, SystemSet},
     system::{Query, Res},
 };
 use bevy_math::{Quat, Vec3, Vec4, Vec4Swizzles};
 use bevy_time::Time;
 use bevy_transform::components::{GlobalTransform, Transform};
 
-use crate::field::FlowField;
+use crate::{activity::TrackActivity, field::FlowField};
 
 pub struct FlowPlugin;
 
 impl Plugin for FlowPlugin {
-    fn build(&self, app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (update_flow_aabbs, update_flow_velocities).in_set(FlowSystems),
+        );
+    }
 }
 
-#[derive(Component)]
-#[require(FlowInfluence, FlowLayers::layer(0), Transform, Aabb)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, SystemSet)]
+pub struct FlowSystems;
+
+#[derive(Component, Deref, DerefMut)]
+#[require(FlowInfluence, FlowLayers::layer(0), Transform, Aabb, TrackActivity)]
 #[repr(transparent)]
-pub struct Flow {
-    pub field: Handle<FlowField>,
-}
+pub struct Flow(Handle<FlowField>);
 
 impl AsAssetId for Flow {
     type Asset = FlowField;
 
     fn as_asset_id(&self) -> AssetId<Self::Asset> {
-        self.field.id()
+        self.0.id()
     }
 }
 
@@ -109,24 +117,16 @@ const CORNERS: [Vec3; 8] = [
     Vec3::new(0.5, 0.5, 0.5),
 ];
 
-#[derive(Debug, thiserror::Error)]
-#[error("Failed to construct Aabb: Flow ({entity:?}) has an invalid scale: {scale:?}")]
-struct InvalidFlowScaleError {
-    entity: Entity,
-    scale: Vec3,
-}
-
 fn update_flow_aabbs(
-    vanes: Query<(Entity, &GlobalTransform, &mut Aabb), (With<Flow>, Changed<GlobalTransform>)>,
-) -> Result<(), BevyError> {
-    for (entity, transform, mut aabb) in vanes {
+    vanes: Query<(&GlobalTransform, &mut Aabb), (With<Flow>, Changed<GlobalTransform>)>,
+) {
+    for (transform, mut aabb) in vanes {
         let scale = transform.scale();
         let corners = CORNERS
             .iter()
             .map(|point| transform.transform_point(point * scale));
-        *aabb = Aabb::enclosing(corners).ok_or(InvalidFlowScaleError { entity, scale })?;
+        *aabb = Aabb::enclosing(corners).expect("CORNERS is nonempty");
     }
-    Ok(())
 }
 
 #[derive(Copy, Clone, Component)]
@@ -144,7 +144,7 @@ pub(crate) struct InheritedVelocity {
     angular_velocity: Vec3,
 }
 
-fn update_velocity(
+fn update_flow_velocities(
     query: Query<(
         &GlobalTransform,
         Has<InheritLinearVelocity>,
